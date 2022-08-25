@@ -1,0 +1,13 @@
+unit Intrerfaces.IParse.Json;
+
+interface
+
+type
+    IParseJson = interface
+
+    end;
+
+implementation
+
+end.
+ 

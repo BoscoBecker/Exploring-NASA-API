@@ -1,0 +1,15 @@
+program NasaRest;
+
+uses
+  Forms,
+  Main in 'view\Main.pas' {Form1},
+  Intrerfaces.IParse.Json in 'Interface\Intrerfaces.IParse.Json.pas',
+  Controller.Parse.Json in 'Interface\Controller.Parse.Json.pas';
+
+{$R *.res}
+
+begin
+  Application.Initialize;
+  Application.CreateForm(TForm1, Form1);
+  Application.Run;
+end.

@@ -1,0 +1,256 @@
+unit Main;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, ExtCtrls, RestClient, uLkJSON, JPeg, DB, DBClient,
+  HttpConnection, ComCtrls;
+
+type
+  TpExplore = (TpRovermars, TpAPOD);
+
+const
+  KEY = 'DEMO_KEY'; // Your Original Key here
+
+type
+  TForm1 = class(TForm)
+    ClientDataSet1: TClientDataSet;
+    DataSource1: TDataSource;
+    RestClient1: TRestClient;
+    Panel1: TPanel;
+    Panel2: TPanel;
+    Label3: TLabel;
+    Label1: TLabel;
+    cbExplorer: TComboBox;
+    Button1: TButton;
+    cbSelect: TComboBox;
+    lblSelect: TLabel;
+    Panel3: TPanel;
+    Panel4: TPanel;
+    LoadingSelect: TLabel;
+    Image2: TImage;
+    StatusBar1: TStatusBar;
+    lblCamera: TLabel;
+    cbCamera: TComboBox;
+    Shape1: TShape;
+    Image1: TImage;
+    PnlInfo: TPanel;
+    procedure Button1Click(Sender: TObject);
+    procedure cbSelectSelect(Sender: TObject);
+    procedure cbCameraChange(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure cbExplorerSelect(Sender: TObject);
+  private
+    FDestination: string;
+    procedure HandleResponse(Response: TStream);
+    procedure Download(FileURL, Destination: string);
+    procedure ClearUrl(FileURL: string);
+    procedure GetJsonURIAddToComboBoxSelect(Json: TlkJSONbase; Tipo: TpExplore);
+    procedure ParseJsonMars(Json: TlkJSONbase);
+    procedure ParseJsonAPOD(Json: TlkJSONbase);
+
+    function CaptionCameraLoading: string;
+    function CaptionSelectPhotoLoading: string;
+    function GetCameraByIndex(index: integer): string;
+    function GetURIByIndex(index: integer): string;
+  end;
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.dfm}
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  Json: TlkJSONbase;
+begin
+  PnlInfo.Visible := False;
+  LoadingSelect.Visible := True;
+  LoadingSelect.Repaint;
+  try
+    Json := TlkJSON.ParseText(RestClient1.Resource(GetURIByIndex(cbExplorer.ItemIndex)).Accept('text/plain').Get);
+
+    lblSelect.Visible := True;
+    cbSelect.Visible := True;
+
+    cbCamera.Visible := False;
+    lblCamera.Visible := False;
+
+    cbSelect.Items.Clear;
+
+    case cbExplorer.ItemIndex of
+      0: GetJsonURIAddToComboBoxSelect(Json, TpRovermars);
+      1: GetJsonURIAddToComboBoxSelect(Json, TpAPOD);
+    end;
+
+  finally
+    LoadingSelect.Visible := False;
+    cbSelect.DroppedDown := True;
+  end;
+end;
+
+procedure TForm1.cbSelectSelect(Sender: TObject);
+begin
+  try
+    LoadingSelect.Visible := True;
+    LoadingSelect.Caption := CaptionSelectPhotoLoading;
+    LoadingSelect.Repaint;
+    Download(cbSelect.Text, cbSelect.Text);
+  finally
+    DeleteFile(GetCurrentDir + '\' + FDestination);
+    LoadingSelect.Visible := False;
+  end;
+end;
+
+procedure TForm1.HandleResponse(Response: TStream);
+var
+  FileStream: TFileStream;
+  Jpeg: TJPEGImage;
+begin
+  FileStream := TFileStream.Create(FDestination, fmCreate);
+  try
+    Response.Position := 0;
+    FileStream.CopyFrom(Response, Response.Size);
+    Jpeg.SaveToStream(FileStream);
+
+    if not FileExists(GetCurrentDir + FDestination) then
+      Jpeg.SaveToFile(GetCurrentDir + FDestination);
+  finally
+    FileStream.Free;
+    Image1.Picture.LoadFromFile(FDestination);
+    Application.ProcessMessages;
+  end;
+end;
+
+procedure TForm1.Download(FileURL, Destination: string);
+var
+  RestClient: TRestClient;
+begin
+  try
+    RestClient := TRestClient.Create(nil);
+    try
+      ClearUrl(Destination);
+      RestClient.ConnectionType := hctWinInet;
+      RestClient.Resource(FileURL).Get(HandleResponse);
+    finally
+      RestClient.Free;
+    end;
+  except
+    // Bypass on Error of Framework
+  end;
+end;
+
+procedure TForm1.ClearUrl(FileURL: string);
+begin
+  FileURL := StringReplace(FileURL, 'http://', '', [rfReplaceAll]);
+  FileURL := StringReplace(FileURL, 'https://', '', [rfReplaceAll]);
+  FileURL := StringReplace(FileURL, '/', '', [rfReplaceAll]);
+  FileURL := StringReplace(FileURL, '\', '', [rfReplaceAll]);
+  FileURL := StringReplace(FileURL, '-', '', [rfReplaceAll]);
+  FileURL := StringReplace(FileURL, '_', '', [rfReplaceAll]);
+  FDestination := FileURL;
+end;
+
+function TForm1.CaptionCameraLoading: string;
+begin
+  if cbCamera.Visible then
+    Result := 'Loading ' + cbCamera.Text + ' ... '
+  else
+    Result := 'Loading APOD: Astronomy Picture of the Day ... '
+end;
+
+function TForm1.CaptionSelectPhotoLoading: string;
+begin
+  if cbCamera.Visible then
+    Result := 'Loading ' + cbCamera.Text + ' ... '
+  else
+    Result := 'Loading: Astronomy Picture of the Day ... ';
+end;
+
+procedure TForm1.cbCameraChange(Sender: TObject);
+begin
+  Image1.Picture := nil;
+  LoadingSelect.Caption := CaptionCameraLoading;
+  Button1.Click;
+end;
+
+function TForm1.GetCameraByIndex(index: integer): string;
+begin
+  case index of
+    0: Result := 'Curiosity';
+    1: Result := 'Opportunity';
+    2: Result := 'Spirit';
+  end;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  cbCamera.ItemIndex := 0;
+  cbExplorer.ItemIndex := 0;
+end;
+
+function TForm1.GetURIByIndex(index: integer): string;
+begin
+  case index of
+    0: Result := 'https://api.nasa.gov/mars-photos/api/v1/rovers/' + GetCameraByIndex(cbCamera.ItemIndex) + '/photos?sol=1000&api_key=' + KEY;
+    1: Result := 'https://api.nasa.gov/planetary/apod?api_key=' + KEY;
+  end;
+end;
+
+procedure TForm1.GetJsonURIAddToComboBoxSelect(Json: TlkJSONbase; Tipo: TpExplore);
+begin
+  case Tipo of
+    TpRovermars: ParseJsonMars(Json);
+    TpAPOD: ParseJsonAPOD(Json);
+  end;
+end;
+
+procedure TForm1.ParseJsonMars(Json: TlkJSONbase);
+var
+  I, J: integer;
+  JsonItems, JsonItem: TlkJSONbase;
+begin
+  cbCamera.Visible := True;
+  lblCamera.Visible := True;
+  for I := 0 to Pred(Json.count) do
+  begin
+    Application.ProcessMessages;
+    JsonItems := Json.Field['photos'];
+    for J := 0 to Pred(JsonItems.Count) do
+    begin
+      JsonItem := JsonItems.Child[J];
+      Application.ProcessMessages;
+      cbSelect.Items.Add(VarToStr(JsonItem.Field['img_src'].Value));
+    end;
+  end;
+end;
+
+procedure TForm1.ParseJsonAPOD(Json: TlkJSONbase);
+var
+  I: integer;
+  Exists: string;
+begin
+  cbSelect.Items.Clear;
+  for I := 0 to Pred(Json.Count) do
+  begin
+    Application.ProcessMessages;
+    if not (Exists = VarToStr(Json.Field['hdurl'].Value)) then
+      cbSelect.Items.Add(VarToStr(Json.Field['hdurl'].Value));
+    Exists := VarToStr(Json.Field['hdurl'].Value);
+    PnlInfo.Caption := 'Título ' + VarToStr(Json.Field['title'].Value);
+  end;
+end;
+
+procedure TForm1.cbExplorerSelect(Sender: TObject);
+begin
+  LoadingSelect.Caption := CaptionCameraLoading;
+  lblCamera.Visible := cbExplorer.ItemIndex = 0;
+  cbCamera.Visible := cbExplorer.ItemIndex = 0;
+  Button1.Click;
+end;
+
+end.
+
